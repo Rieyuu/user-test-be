@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,6 +23,11 @@ type UserRow = {
 type UserPublicRow = Pick<
   UserRow,
   'id' | 'email' | 'name' | 'is_active' | 'register_date'
+>;
+
+type UserAuthRow = Pick<
+  UserRow,
+  'id' | 'email' | 'password' | 'is_active' | 'deleted_at'
 >;
 
 function isPgUniqueViolation(err: unknown): err is { code: string } {
@@ -103,6 +109,19 @@ export class UsersService {
 
     if (!user) throw new NotFoundException('user not found');
     return this.mapToResponseDto(user);
+  }
+
+  async findActiveAuthUserByEmail(email: string): Promise<UserAuthRow> {
+    const user = await this.knexService
+      .connection<UserRow>('users')
+      .select(['id', 'email', 'password', 'is_active', 'deleted_at'])
+      .where({ email })
+      .first();
+
+    if (!user) throw new NotFoundException('user not found');
+    if (user.deleted_at) throw new NotFoundException('user not found');
+    if (!user.is_active) throw new ForbiddenException('user is inactive');
+    return user;
   }
 
   async update(id: number, dto: UpdateUserDto): Promise<UserResponseDto> {
